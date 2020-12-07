@@ -1,0 +1,259 @@
+#!/opt/anaconda3.7/bin/python3.7
+import numpy as np, matplotlib.pyplot as plt, os, sys
+import regex as re, ast
+from setup_functions import *
+from subroutines.parse_input import *
+from subroutines.scatter import *
+from subroutines.bar import *
+from subroutines.dev import *
+
+save_list = ["eps", "pdf", "pgf", "png", "ps", "raw", "rgba", "svg", "svgz"]
+
+keys_list = ["plot", "fit", "fit_plot", "deviation", "subplot", "ref", "uncertainty"]
+
+keys = {"plot": ["scatter", "bar", "dev"],
+        "fit": ["linear", "exp"],
+        "fit_plot": ["split", "line"],
+        "deviation": ["mae", "me", "std", "maxerr", "scatter", "scatline", "ref", "type"],
+        "subplot": ["sticky", "loose"],
+        "ref": np.arange(0, 10),
+        "uncertainty": np.arange(1.0E-5, 1.0E-4),
+        "frac": False
+        }
+
+keys_default = {"plot": "scatter", "fit": "", "fit_plot": "line",
+                "deviation": "", "subplot": "", "ref": 0, "uncertainty": 1, "frac": False}
+
+cosmetics_list = ["xaxis", "yaxis", "title", "legend", "model", "print_fit", "extrapolate",
+                  "axisfontsize", "titlefontsize", "legendfontsize", "tickmarksize", "textfontsize",
+                  "legloc", "rot", "pointsize", "tickalignment",
+                  "linewidth", "legendbox", "legcolumns", "plotall", "diagonal", "gridlines", "yrange",
+                  "datacolour", "fitcolour", "devcolour", "devpattern", "subplotframe", "figtype", "show_legend",
+                  "devpointcol", "outdec", "tight", "nbarsep", "dpi"]
+
+cosmstr = ["xaxis", "yaxis", "title", "legend", "devpattern", "subplotframe", "figtype", "show_legend", "print_fit",
+           "legendbox", "plotall", "diagonal", "gridlines", "tickalignment", "tight", "extrapolate"]
+cosmval = ["axisfontsize", "titlefontsize", "legendfontsize", "tickmarksize", "rot", "pointsize", "linewidth",
+           "legcolumns", "textfontsize", "outdec", "nbarsep", "dpi"]
+cosmcol = ["datacolour", "fitcolour", "devcolour", "legloc", "devpointcol"]
+
+cosmetic_defaults = {"xaxis": "", "yaxis": "", "title": "", "legend": "", "model": "Model 1;Model 2;Model 3",
+                     "axisfontsize": 18, "titlefontsize": 18, "legendfontsize": 18, "tickmarksize": 18, "rot": 0,
+                     "datacolour": "k", "fitcolour": "r", "devcolour": "mae:b;me:r;std:g;maxerr:c", "devpattern": "off",
+                     # "datacolour": "k", "fitcolour": "r", "devcolour": "mae:'#003f5c';me:'#7a5195';std:'#ef5675';maxerr:#ffa600'", "devpattern": "off",
+                     "legloc": "upper right", 'subplotframe': "grid", "figtype": "rectangle", "legendbox": "on",
+                     "show_legend": "on", "print_fit": "(0.05, 0.9)", "pointsize": 20, "linewidth": 1.0,
+                     "plotall": "off", "diagonal": "off", "legcolumns": 1, "gridlines": "off", "textfontsize": 16,
+                     "tickalignment": "center", "yrange": None, "devpointcol": "w", "outdec": 20, "tight": "on",
+                     "nbarsep": 2, "dpi": None, "extrapolate": False}
+
+hatch_list = ['/', '\\', '|', '-', '+', 'x', 'o', 'O', '.', '*']
+
+# print_string = "\n\nRunning PlotPro"
+print_string = initiate_output()
+sep2 = "-"*35 + "="*50 + "-"*35 + "\n"*2
+sep = "\n"*2 + sep2 + "\n"*2
+
+test = False
+
+if len(sys.argv) == 1 and not test:
+    print(f"\n\n\tERROR: This script must be called with an additional argument, ie: "
+          f"\n\n\t\t\t plotpro input.txt\n\n")
+    sys.exit()
+
+if not test:
+    filename = sys.argv[1]
+else:
+    filenames = {"xy": "xy_test.txt", "exp": "exp_test.txt", "dev1": "deviation_test.txt",
+                 "dev2": "deviation_test_2.txt", "sub1": "multiax_fig.txt", "sub2": "Datapyplot_subplots.txt",
+                 "sub3": "Datapyplot_subplotframe.txt", "bar": "bar_test.txt", "jcc": "bond1_san.txt",
+                 "sarah": "6g_GGA_C.txt", "hdz": "hdz_augj.txt", "bar2": "abspic.txt"}
+    filename = filenames['dev2']
+    filename = f"../testfiles/{filename}"
+
+output_name = f"{os.path.splitext(filename)[0]}.out"
+# print(os.getcwd())
+
+print_string += f"\n\n{'Input file':30} {filename:25}\n{'Current working directory':30} {os.getcwd()}{sep}"
+
+# PPPPPPP     AAAAAA    RRRRRRR      SSSSSSS    EEEEEEEE
+# P      P   A      A   R      R    S           E
+# P      P  A        A  R      R    S           E
+# PPPPPPP   AAAAAAAAAA  RRRRRRR      SSSSS      EEEEE
+# P         A        A  R R                S    E
+# P         A        A  R   R               S   E
+# P         A        A  R    R              S   E
+# P         A        A  R     R            S    E
+# P         A        A  R      R    SSSSSSS     EEEEEEEE
+
+data_table, keywords, cosmetics, plot_name, print_string = read_input(
+    filename,
+    save_list,
+    keys_list,
+    keys,
+    cosmetics_list,
+    print_string
+)
+
+
+
+if "devcolour" not in cosmetics.keys():
+    if "bar" in keywords["plot"]:
+        if "legend" not in cosmetics.keys():
+            cosmetics["legend"] = ""
+
+        if len(cosmetics["legend"].split(";")) <= 4:
+            cosmetics["devcolour"] = update_default_bar_colours(legends=cosmetics["legend"].split(";"))
+
+    elif "dev" in keywords["plot"]:
+        if "legend" not in cosmetics.keys():
+            ref = ""
+            for i in keywords["deviation"]:
+                if i not in ("scatter", "ref"):
+                    ref += i+";"
+
+            cosmetics["legend"] = ref[:-1]
+
+        if sum([i != "scatter" and i != "ref" for i in keywords["deviation"]]) <= 4:
+            cosmetics["devcolour"] = update_default_bar_colours(legends=cosmetics["legend"].split(";"))
+
+# Input default values
+
+cosmetics, keywords, gridbool, print_fit, figsize, legloc, print_string = add_defaults(
+    cosmetics,
+    cosmetic_defaults,
+    cosmetics_list,
+    keywords,
+    keys_default,
+    keys_list,
+    hatch_list,
+    print_string
+)
+
+ref = keywords["ref"]       # put the reference column in a variable for easy use in arrays
+
+# Sanitate data for bad reference values - only if fractional deviations are to be made
+
+if keywords["frac"]:
+    data_backup = np.array(data_table)
+    data_table, print_string = sanitate_data(
+        data_table,
+        keywords["ref"],
+        output_name,
+        print_string
+    )
+else:
+    data_table = np.array(data_table)
+
+# Print all parameters to output (that way, it is clear exactly which keywords exist, and which values have been used)
+print_string += "Used parameters".center(len(sep2))
+print_string += f"\n{sep2}".ljust(len(sep2))
+print_string += "routecard:\n"
+for key in keywords:
+    if type(keywords[key]) == type(keys_list):
+        if len(keywords[key]) == 1:
+            print_string += "\t{0:<20} {1}\n".format(key, keywords[key][0])
+        elif len(keywords[key]) > 1:
+            print_string += "\t{0:<20} ".format(key)
+            for i in np.arange(len(keywords[key])):
+                if i == len(keywords[key])-1:
+                    print_string += f"{keywords[key][i]}\n"
+                else:
+                    print_string += f"{keywords[key][i]}, "
+        else:
+            continue
+    else:
+        print_string += "\t{0:<20} {1}\n".format(key, keywords[key])
+
+print_string += "\n\ntitlecard:\n"
+for key in cosmetics:
+    if (key == "devpattern") and cosmetics[key] == "on":
+        print_string += "\t{0:<20} {1}\t\t\"".format(key, cosmetics[key])
+        for i, hat in enumerate(cosmetics[key]):
+            if not i == len(cosmetics[key]) - 1:
+                print_string += "{0};".format(hat)
+            else:
+                print_string += "{0}\"\n".format(hat)
+    else:
+        print_string += "\t{0:<20} {1}\n".format(key, cosmetics[key])
+print_string += sep
+
+data_table = rearrange_table(data_table, ref)
+
+# PPPPPPP   L           OOOO    TTTTTTTT
+# P      P  L         OO    OO     TT
+# P      P  L         O      O     TT
+# PPPPPPP   L         O      O     TT
+# P         L         O      O     TT
+# P         L         O      O     TT
+# P         L         O      O     TT
+# P         L         OO    OO     TT
+# P         LLLLLLLL    OOOO       TT
+
+if "plot" in keywords.keys():
+    spac, dec = cosmetics["outdec"] + 5, cosmetics["outdec"]
+    format_dict = {"spac": spac, "dec": dec, "sep2": sep2, "figsize": figsize, "legloc": legloc, "print_fit": print_fit}
+    bool_dict = {"gridbool": gridbool, "diagonal": cosmetics["diagonal"], "show_legend": cosmetics["show_legend"]}
+
+    if "scatter" in keywords["plot"]:
+        print_string += "Scatter plot".center(len(format_dict["sep2"]))
+        print_string += f"\n{format_dict['sep2']}".ljust(len(format_dict["sep2"]))
+        fig, ax, print_string = plot_scatter(
+            data_table,
+            keywords,
+            cosmetics,
+            print_string,
+            format_dict,
+            bool_dict,
+            plot_name
+        )
+
+    if "dev" in keywords["plot"]:
+        print_string += "Deviations".center(len(sep2))
+        print_string += f"\n{sep2}".ljust(len(sep2))
+        fig, ax, print_string = plot_dev(
+            data_table,
+            keywords,
+            cosmetics,
+            print_string,
+            format_dict,
+            bool_dict,
+            plot_name,
+            output_name
+        )
+
+    if "bar" in keywords["plot"]:
+        print_string += "Pre-calculated bar plots".center(len(sep2))
+        print_string += f"\n{sep2}".ljust(len(sep2))
+        print_string += "This bar plot is made directly as a bar plot of the input data.\n" \
+                        "The user is therefore responsible for the quality of the calculations.\n\n"
+        fig, ax, print_string = plot_bars(
+            data_table,
+            keywords,
+            cosmetics,
+            print_string,
+            format_dict,
+            bool_dict,
+            plot_name
+        )
+
+# for name in plot_name:
+    # name, ext = name.split(sep='.')
+    # plt.savefig(f"{name}.{ext}", dpi=cosmetics["dpi"])
+#     plt.savefig(name, dpi=cosmetics["dpi"])
+
+print_string += sep
+print_string += "Printing content of input file:\n\n"
+
+with open(filename, 'r') as inFile:
+    for line in inFile:
+        print_string += f"{line}"
+
+print_string += sep
+
+print_string += "\n\n\nExiting PlotPro. Have a nice day :)"
+
+with open(output_name, 'w') as outFile:
+    outFile.write(print_string)
+
+plt.show()
